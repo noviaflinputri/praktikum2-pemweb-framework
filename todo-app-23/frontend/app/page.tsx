@@ -1,10 +1,7 @@
 import React from 'react';
-import { getTodos } from '@/lib/todos';
-import TodoStateOnlyApp from './components/todostateonlyapp';
+import TodoApp from './components/todoapp';
 
-export default async function TodoPage() {
-  const initialTodos = await getTodos();
-
+export default function TodoPage() {
   return (
     <main className="min-h-screen p-6 md:p-10 bg-white text-dark-70">
       <div className="max-w-2xl mx-auto space-y-6">
@@ -15,8 +12,8 @@ export default async function TodoPage() {
             </h1>
           </header>
 
-          {/* Halaman Beranda: Menggunakan State Murni (In-Memory) */}
-          <TodoStateOnlyApp initialTodos={initialTodos} />
+          {/* Komponen Utama Todo dengan Integrasi API Database */}
+          <TodoApp />
         </div>
       </div>
     </main>

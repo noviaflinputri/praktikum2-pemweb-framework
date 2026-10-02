@@ -1,14 +1,15 @@
-export const API_BASE_URL = 'https://dummyjson.com';
+import { authService } from './authService';
+
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 export class ApiError extends Error {
   status: number;
-  statusText: string;
 
-  constructor(message: string, status: number, statusText: string) {
+  constructor(message: string, status: number) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
-    this.statusText = statusText;
   }
 }
 
@@ -18,37 +19,25 @@ export async function apiClient<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
-  const defaultHeaders: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
+  // Ambil token JWT dari authService / localStorage
+  const token = authService.getToken();
 
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        ...defaultHeaders,
-        ...options.headers,
-      },
-      next: { revalidate: 60 },
-    });
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
 
-    if (!response.ok) {
-      throw new ApiError(
-        `HTTP Error: Gagal memuat data dari ${endpoint} (${response.status} ${response.statusText})`,
-        response.status,
-        response.statusText
-      );
-    }
-
-    const data: T = await response.json();
-    return data;
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
-
-    throw new Error(
-      `Network Error: Tidak dapat terhubung ke server API (${(error as Error).message})`
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new ApiError(
+      errorData.message || 'Terjadi kesalahan pada server',
+      response.status
     );
   }
+
+  return response.json();
 }

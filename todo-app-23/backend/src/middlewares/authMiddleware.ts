@@ -1,26 +1,36 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import type { JwtUserPayload } from '../types/auth';
-import { sendError } from '../utils/response';
 
 export const verifyToken = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers.authorization;
 
-  if (!token) {
-    sendError(res, 'Akses ditolak. Token tidak ditemukan!', 401);
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({
+      success: false,
+      message: 'Akses ditolak! Token otentikasi tidak ditemukan.',
+    });
     return;
   }
+
+  const token = authHeader.split(' ')[1];
 
   try {
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET as string
-    ) as JwtUserPayload;
+      process.env.JWT_SECRET || 'secret_key'
+    ) as any;
 
-    res.locals.userId = decoded.id;
+    (req as any).user = decoded;
+    res.locals.user = decoded;
+
     next();
   } catch (error) {
-    sendError(res, 'Sesi tidak valid atau kedaluwarsa!', 403);
+    res.status(401).json({
+      success: false,
+      message: 'Token tidak valid atau telah kadaluarsa!',
+    });
   }
 };
+
+// Alias agar kompatibel dengan dua nama sekaligus
+export const authMiddleware = verifyToken;

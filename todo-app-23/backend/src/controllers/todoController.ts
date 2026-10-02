@@ -9,9 +9,23 @@ const parsePositiveInt = (value: unknown, fallback: number): number => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-// Helper internal untuk mengambil userId secara aman dari res.locals atau req
+// Helper internal untuk mengekstrak userId secara fleksibel dari berbagai bentuk payload JWT
 const getUserId = (req: Request, res: Response): number => {
-  return res.locals.user?.id || (req as any).user?.id || (req as any).userId;
+  const user = (req as any).user || res.locals.user;
+
+  // Cek log terminal backend untuk debugging jika diperlukan
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[DEBUG] Data user dari Auth Token:', user);
+  }
+
+  const id =
+    user?.id ||
+    user?.userId ||
+    user?.user_id ||
+    user?.sub ||
+    (req as any).userId;
+
+  return Number(id) || 0;
 };
 
 export const getTodos = async (req: Request, res: Response): Promise<void> => {
@@ -36,13 +50,13 @@ export const getTodos = async (req: Request, res: Response): Promise<void> => {
       page,
       perPage,
       total,
-      totalPages: Math.ceil(total / perPage),
+      totalPages: Math.ceil(total / perPage) || 1,
     };
 
     sendSuccessPagination(res, 'Berhasil!', data, pagination);
-  } catch (error) {
-    console.error(error);
-    sendError(res, 'Gagal mengambil data.', 500);
+  } catch (error: any) {
+    console.error('Error getTodos:', error);
+    sendError(res, error.message || 'Gagal mengambil data.', 500);
   }
 };
 
@@ -66,8 +80,9 @@ export const getTodoById = async (req: Request, res: Response): Promise<void> =>
     };
 
     sendSuccess(res, 'Berhasil!', data);
-  } catch {
-    sendError(res, 'Gagal mengambil data.', 500);
+  } catch (error: any) {
+    console.error('Error getTodoById:', error);
+    sendError(res, error.message || 'Gagal mengambil data.', 500);
   }
 };
 
@@ -75,17 +90,36 @@ export const createTodo = async (req: Request, res: Response): Promise<void> => 
   const payload: CreateTodoRequest = req.body;
   const userId = getUserId(req, res);
 
+  // Mencegah query ke MySQL jika ID user bernilai 0/invalid agar tidak memicu Foreign Key Fail
+  if (!userId) {
+    sendError(
+      res,
+      'Sesi otentikasi tidak ditemukan atau telah kadaluarsa. Silakan Logout dan Login kembali!',
+      401
+    );
+    return;
+  }
+
+  const taskText = payload.task?.trim();
+
+  if (!taskText) {
+    sendError(res, 'Task wajib diisi!', 400);
+    return;
+  }
+
   try {
-    const newId = await TodoModel.create(userId, payload.task);
+    const newId = await TodoModel.create(userId, taskText);
+
     const data: TodoResponse = {
       id: newId,
-      todo: payload.task,
+      todo: taskText,
       completed: false,
     };
 
     sendSuccess(res, 'Tugas berhasil ditambahkan!', data, 201);
-  } catch {
-    sendError(res, 'Gagal menambahkan tugas.', 500);
+  } catch (error: any) {
+    console.error('Error createTodo Detail:', error);
+    sendError(res, error.message || 'Gagal menambahkan tugas.', 500);
   }
 };
 
@@ -93,6 +127,11 @@ export const updateTodo = async (req: Request, res: Response): Promise<void> => 
   const { id } = req.params;
   const payload: UpdateTodoRequest = req.body;
   const userId = getUserId(req, res);
+
+  if (!userId) {
+    sendError(res, 'Sesi otentikasi tidak valid! Silakan Login kembali.', 401);
+    return;
+  }
 
   try {
     const affectedRows = await TodoModel.update(
@@ -108,14 +147,20 @@ export const updateTodo = async (req: Request, res: Response): Promise<void> => 
     }
 
     sendSuccess(res, 'Tugas berhasil diperbarui!');
-  } catch {
-    sendError(res, 'Gagal memperbarui tugas.', 500);
+  } catch (error: any) {
+    console.error('Error updateTodo:', error);
+    sendError(res, error.message || 'Gagal memperbarui tugas.', 500);
   }
 };
 
 export const deleteTodo = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = getUserId(req, res);
+
+  if (!userId) {
+    sendError(res, 'Sesi otentikasi tidak valid! Silakan Login kembali.', 401);
+    return;
+  }
 
   try {
     const affectedRows = await TodoModel.delete(Number(id), userId);
@@ -126,7 +171,8 @@ export const deleteTodo = async (req: Request, res: Response): Promise<void> => 
     }
 
     sendSuccess(res, 'Tugas berhasil dihapus!');
-  } catch {
-    sendError(res, 'Gagal menghapus tugas.', 500);
+  } catch (error: any) {
+    console.error('Error deleteTodo:', error);
+    sendError(res, error.message || 'Gagal menghapus tugas.', 500);
   }
 };
